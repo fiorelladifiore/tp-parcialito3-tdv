@@ -1,0 +1,391 @@
+openapi: 3.0.3
+info:
+  title: GitHub REST API - Subconjunto usado en el TP
+  description: >
+    Documentacion OpenAPI 3.0 de los endpoints de la API REST oficial de GitHub
+    utilizados en el Trabajo Practico de Tecnicas de Documentacion y Validacion:
+    autenticacion, listado de repositorios propios, creacion de repositorio,
+    creacion de Pull Request y comentario en Pull Request.
+    Fuente oficial: https://docs.github.com/en/rest
+  version: "1.0.0"
+  contact:
+    name: Trabajo Practico - Tecnicas de Documentacion y Validacion
+
+servers:
+  - url: https://api.github.com
+    description: API REST oficial de GitHub (soporta CORS, se puede probar directo desde Swagger UI)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Repositorios
+    description: Listado y creacion de repositorios (incisos 2 y 3)
+  - name: Pull Requests
+    description: Creacion de Pull Requests (inciso 4)
+  - name: Comentarios
+    description: Comentarios sobre Pull Requests (inciso 5)
+
+paths:
+  /user/repos:
+    get:
+      tags: [Repositorios]
+      summary: Listar repositorios del usuario autenticado
+      description: Inciso 2 del TP. Requiere Bearer token valido.
+      operationId: listMyRepositories
+      parameters:
+        - $ref: '#/components/parameters/ApiVersionHeader'
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 30
+            maximum: 100
+          description: Cantidad de resultados por pagina
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [created, updated, pushed, full_name]
+            default: created
+        - name: direction
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+      responses:
+        '200':
+          description: Listado de repositorios del usuario autenticado
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Repository'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Repositorios]
+      summary: Crear un repositorio nuevo para el usuario autenticado
+      description: Inciso 3 del TP. Requiere Bearer token con permiso `repo` (o `public_repo`).
+      operationId: createRepository
+      parameters:
+        - $ref: '#/components/parameters/ApiVersionHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewRepository'
+            examples:
+              ejemplo:
+                value:
+                  name: tp-documentacion-validacion
+                  description: Repositorio creado para el TP de Tecnicas de Documentacion y Validacion
+                  private: false
+      responses:
+        '201':
+          description: Repositorio creado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Repository'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /repos/{owner}/{repo}/pulls:
+    post:
+      tags: [Pull Requests]
+      summary: Crear un Pull Request
+      description: Inciso 4 del TP. Crea un PR entre una rama nueva (`head`) y `main` (`base`).
+      operationId: createPullRequest
+      parameters:
+        - $ref: '#/components/parameters/ApiVersionHeader'
+        - $ref: '#/components/parameters/OwnerPath'
+        - $ref: '#/components/parameters/RepoPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewPullRequest'
+            examples:
+              ejemplo:
+                value:
+                  title: "Agrega funcionalidad X"
+                  body: "Descripcion del cambio propuesto por este PR."
+                  head: "feature/nueva-funcionalidad"
+                  base: "main"
+      responses:
+        '201':
+          description: Pull Request creado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PullRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /repos/{owner}/{repo}/issues/{issue_number}/comments:
+    post:
+      tags: [Comentarios]
+      summary: Agregar un comentario a un Pull Request existente
+      description: >
+        Inciso 5 del TP. En la API de GitHub, los Pull Requests son un tipo particular
+        de Issue, por eso los comentarios se agregan a traves del endpoint de issues,
+        usando el mismo numero que identifica al PR.
+      operationId: addCommentToPullRequest
+      parameters:
+        - $ref: '#/components/parameters/ApiVersionHeader'
+        - $ref: '#/components/parameters/OwnerPath'
+        - $ref: '#/components/parameters/RepoPath'
+        - name: issue_number
+          in: path
+          required: true
+          description: Numero del Pull Request (coincide con el numero de issue)
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewComment'
+            examples:
+              ejemplo:
+                value:
+                  body: "Comentario de prueba asociado a este PR."
+      responses:
+        '201':
+          description: Comentario creado y asociado al Pull Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: El repositorio o el Pull Request/Issue no existe
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: >
+        Personal Access Token (classic o fine-grained) generado en
+        https://github.com/settings/tokens. Se envia como header
+        "Authorization: Bearer <token>".
+      description: >
+        Inciso 1 del TP. Todas las llamadas de esta especificacion requieren
+        autenticacion mediante Bearer Token mandado en el header Authorization.
+        El token no se hardcodea: en la app Java se inyecta desde la variable
+        de entorno GITHUB_TOKEN, y en Swagger UI se ingresa mediante el boton
+        "Authorize" (nunca queda escrito en el YAML ni en el codigo).
+
+  parameters:
+    OwnerPath:
+      name: owner
+      in: path
+      required: true
+      description: Usuario u organizacion propietaria del repositorio
+      schema:
+        type: string
+    RepoPath:
+      name: repo
+      in: path
+      required: true
+      description: Nombre del repositorio
+      schema:
+        type: string
+    ApiVersionHeader:
+      name: X-GitHub-Api-Version
+      in: header
+      required: false
+      description: Version de la API de GitHub a utilizar
+      schema:
+        type: string
+        default: "2022-11-28"
+
+  responses:
+    Unauthorized:
+      description: Token invalido, expirado o ausente
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Token valido pero sin permisos suficientes
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationError:
+      description: Error de validacion (por ejemplo, nombre de repositorio ya existente)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorBody'
+
+  schemas:
+    Repository:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          example: tp-documentacion-validacion
+        full_name:
+          type: string
+          example: usuario/tp-documentacion-validacion
+        description:
+          type: string
+          nullable: true
+        private:
+          type: boolean
+        visibility:
+          type: string
+          enum: [public, private, internal]
+        html_url:
+          type: string
+          format: uri
+          example: https://github.com/usuario/tp-documentacion-validacion
+        default_branch:
+          type: string
+          example: main
+
+    NewRepository:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Nombre del nuevo repositorio
+          example: tp-documentacion-validacion
+        description:
+          type: string
+          example: Repositorio creado para el TP
+        private:
+          type: boolean
+          default: false
+          description: true = privado, false = publico
+
+    PullRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        number:
+          type: integer
+          example: 1
+        title:
+          type: string
+        body:
+          type: string
+          nullable: true
+        state:
+          type: string
+          enum: [open, closed]
+        html_url:
+          type: string
+          format: uri
+        head:
+          $ref: '#/components/schemas/BranchRef'
+        base:
+          $ref: '#/components/schemas/BranchRef'
+
+    BranchRef:
+      type: object
+      properties:
+        ref:
+          type: string
+          example: main
+        sha:
+          type: string
+
+    NewPullRequest:
+      type: object
+      required: [title, head, base]
+      properties:
+        title:
+          type: string
+          example: Agrega funcionalidad X
+        body:
+          type: string
+          example: Descripcion del cambio propuesto por este PR.
+        head:
+          type: string
+          description: Rama origen con los cambios
+          example: feature/nueva-funcionalidad
+        base:
+          type: string
+          description: Rama destino
+          example: main
+
+    Comment:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        body:
+          type: string
+        html_url:
+          type: string
+          format: uri
+        user:
+          type: object
+          properties:
+            login:
+              type: string
+
+    NewComment:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          example: Comentario de prueba asociado a este PR.
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+        documentation_url:
+          type: string
+          format: uri
+
+    ValidationErrorBody:
+      type: object
+      properties:
+        message:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              resource:
+                type: string
+              code:
+                type: string
+              field:
+                type: string
+        documentation_url:
+          type: string
+          format: uri
